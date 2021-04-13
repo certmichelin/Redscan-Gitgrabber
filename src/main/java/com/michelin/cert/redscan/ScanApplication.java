@@ -4,12 +4,15 @@
 
 package com.michelin.cert.redscan;
 
-import com.michelin.cert.redscan.utils.models.Alert;
+import com.michelin.cert.redscan.utils.datalake.DatalakeStorageException;
+import com.michelin.cert.redscan.utils.models.Severity;
+import com.michelin.cert.redscan.utils.models.Vulnerability;
 import com.michelin.cert.redscan.utils.system.OsCommandExecutor;
 import com.michelin.cert.redscan.utils.system.StreamGobbler;
 
 import java.io.File;
 
+import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.logging.log4j.LogManager;
 
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -74,30 +77,77 @@ public class ScanApplication {
         //Convert the stream output.
         if (streamGobbler.getStandardOutputs() != null) {
           if (streamGobbler.getStandardOutputs().length != 0) {
-            StringBuilder sbr = new StringBuilder();
-            StringBuilder sbrFull = new StringBuilder();
-            for (Object object : streamGobbler.getStandardOutputs()) {
-              String result = ((String) object).replaceAll("\u001B\\[[;\\d]*m", "");
-              if (result.startsWith("[!]") || result.startsWith("[+]")) {
-                sbr.append(result).append(System.getProperty("line.separator"));
-              }
+            int iter = 0;
+            int size = streamGobbler.getStandardOutputs().length;
+            StringBuilder sbrFull = new StringBuilder(); //For logging purpose.
+            StringBuilder sbr = new StringBuilder();     //For datalake.
+
+            while (iter < size) {
+
+              String result = ((String) streamGobbler.getStandardOutputs()[iter]).replaceAll("\u001B\\[[;\\d]*m", "");
               sbrFull.append(result).append(System.getProperty("line.separator"));
+
+              if (result.startsWith("[!]")) {
+                LogManager.getLogger(ScanApplication.class).info(String.format("Detect new vulnerability : %s", result));
+                
+                //Begin new vulnerability creation.
+                sbr.append(result).append(System.getProperty("line.separator"));
+                String title = result.replace("[!] ", "");
+                LogManager.getLogger(ScanApplication.class).info(String.format("Extract title : %s", title));
+                
+                String url = "";
+                String token = "";
+                StringBuilder vulnMessage = new StringBuilder();
+                boolean vulnEnded = false;
+
+                while (++iter < size && vulnEnded == false) {
+                  result = ((String) streamGobbler.getStandardOutputs()[iter]).replaceAll("\u001B\\[[;\\d]*m", "");
+                  if (result.startsWith("[+]")) {
+
+                    LogManager.getLogger(ScanApplication.class).info(String.format("Add details to vulnerability : %s", result));
+                    sbr.append(result).append(System.getProperty("line.separator"));
+                    sbrFull.append(result).append(System.getProperty("line.separator"));
+
+                    //Add line to the message
+                    vulnMessage.append(result.replace("[+] ", "")).append(System.getProperty("line.separator"));
+
+                    //Retrieve the raw url.
+                    if (result.startsWith("[+] RAW URL : ")) {
+                      url = result.replace("[+] RAW URL : ", "");
+                      LogManager.getLogger(ScanApplication.class).info(String.format("URL found for vulnerability : %s", url));
+                    }
+                    
+                    if (result.startsWith("[+] Token : ")) {
+                      token = result.replace("[+] Token : ", "");
+                      LogManager.getLogger(ScanApplication.class).info(String.format("Token found for vulnerability : %s", token));
+                    }
+                  } else if (result.startsWith("[!]")) {
+                    vulnEnded = true;
+                  }
+                }
+
+                Vulnerability vulnerability = new Vulnerability(Vulnerability.generateId("redscan-gitgrabber", message, DigestUtils.md5Hex(url + token).toUpperCase()),
+                        Severity.HIGH,
+                        title,
+                        vulnMessage.toString(),
+                        url,
+                        "redscan-gitgrabber");
+                rabbitTemplate.convertAndSend(RabbitMqConfig.FANOUT_VULNERABILITIES_EXCHANGE_NAME, "", vulnerability.toJson());
+              } else {
+                ++iter;
+              }
             }
 
             LogManager.getLogger(ScanApplication.class).info(String.format("Gitgrabber output for %s : %s", message, sbrFull.toString()));
 
-            //Update the datalake and send alert.
+            //Update the datalake.
             datalakeConfig.upsertBrandField(message, "gitgrabber", sbr.toString());
 
-            if (!sbr.toString().isEmpty()) {
-              //Send the alert.
-              Alert alert = new Alert(Alert.HIGH, String.format("[Gitgrabber] Potential leak in Github for %s", message), sbr.toString());
-              rabbitTemplate.convertAndSend(RabbitMqConfig.FANOUT_ALERTS_EXCHANGE_NAME, "", alert.toJson());
-            }
           }
         }
-
       }
+    } catch (DatalakeStorageException ex) {
+      LogManager.getLogger(ScanApplication.class).error(String.format("Datalake Storage Exception : %s", ex.getMessage()));
     } catch (Exception ex) {
       LogManager.getLogger(ScanApplication.class).error(String.format("Exception : %s", ex.getMessage()));
     }

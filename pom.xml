@@ -14,9 +14,9 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     
         <!-- Define dependencies versions -->
-        <redscan-utils.version>2.0.2</redscan-utils.version>
+        <redscan-utils.version>2.0.4</redscan-utils.version>
         <log4j-layout-template-json.version>2.14.0</log4j-layout-template-json.version>
-
+        <commons-codec.version>1.15</commons-codec.version>
         <!-- Define test dependencies versions -->
         
         <!-- Define plugins versions -->
@@ -29,7 +29,7 @@
         <version>2.4.1</version>
     </parent>
          
-     <!-- Manage repository for REDSCAN UTILS -->
+    <!-- Manage repository for REDSCAN UTILS -->
     <repositories>
         <repository>
             <id>redscan-utils</id>
@@ -87,7 +87,11 @@
         <!-- End of dependencies for logging -->
         
         <!-- Custom dependencies -->
-        
+        <dependency>
+            <groupId>commons-codec</groupId>
+            <artifactId>commons-codec</artifactId>
+            <version>${commons-codec.version}</version>
+        </dependency>
         <!-- End of Custom dependencies -->
     </dependencies>
 
