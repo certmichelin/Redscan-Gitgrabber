@@ -87,7 +87,8 @@ public class ScanApplication {
               String result = ((String) streamGobbler.getStandardOutputs()[iter]).replaceAll("\u001B\\[[;\\d]*m", "");
               sbrFull.append(result).append(System.getProperty("line.separator"));
 
-              if (result.startsWith("[!]")) {
+              //The contains test is to avoid false positive : https://github.com/certmichelin/Redscan-Gitgrabber/issues/2
+              if (result.startsWith("[!]") && result.contains("(keyword used:")) { 
                 LogManager.getLogger(ScanApplication.class).info(String.format("Detect new vulnerability : %s", result));
                 
                 //Begin new vulnerability creation.
