@@ -30,7 +30,7 @@ import org.springframework.context.annotation.Configuration;
  * @author Maxime ESCOURBIAC
  */
 @Configuration
-public class DatalakeConfig extends DatalakeStorage {
+public class DatalakeConfig {
 
   @Value("${datalake.elastic.url}")
   private String elasticSearchUrlProperty;
@@ -42,7 +42,7 @@ public class DatalakeConfig extends DatalakeStorage {
 
   @PostConstruct
   public void initDatalakeStorage() {
-    elasticSearchUrl = elasticSearchUrlProperty;
+    DatalakeStorage.init(elasticSearchUrlProperty);
   }
 
 }

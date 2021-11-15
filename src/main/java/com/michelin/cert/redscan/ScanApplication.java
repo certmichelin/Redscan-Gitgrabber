@@ -17,8 +17,9 @@
 package com.michelin.cert.redscan;
 
 import com.michelin.cert.redscan.utils.datalake.DatalakeStorageException;
-import com.michelin.cert.redscan.utils.models.Severity;
-import com.michelin.cert.redscan.utils.models.Vulnerability;
+import com.michelin.cert.redscan.utils.models.Brand;
+import com.michelin.cert.redscan.utils.models.reports.Severity;
+import com.michelin.cert.redscan.utils.models.reports.Vulnerability;
 import com.michelin.cert.redscan.utils.system.OsCommandExecutor;
 import com.michelin.cert.redscan.utils.system.StreamGobbler;
 
@@ -29,7 +30,6 @@ import org.apache.logging.log4j.LogManager;
 
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
@@ -45,11 +45,7 @@ public class ScanApplication {
 
   private static final File EXEC_DIR = new File("/usr/bin/gitgrabber");
 
-  //Only required if pushing data to queues
   private final RabbitTemplate rabbitTemplate;
-
-  @Autowired
-  private DatalakeConfig datalakeConfig;
 
   /**
    * Constructor to init rabbit template. Only required if pushing data to queues
@@ -76,12 +72,15 @@ public class ScanApplication {
    */
   @RabbitListener(queues = {RabbitMqConfig.BRAND_DOMAINS})
   public void receiveMessage(String message) {
-    LogManager.getLogger(ScanApplication.class).info(String.format("Start gitgrabber : %s", message));
     try {
+      Brand receivedBrand = new Brand();
+      receivedBrand.fromJson(message);
+
+      LogManager.getLogger(ScanApplication.class).info(String.format("Start gitgrabber : %s", receivedBrand.getName()));
 
       //Execute gitgrabber.
       OsCommandExecutor osCommandExecutor = new OsCommandExecutor();
-      StreamGobbler streamGobbler = osCommandExecutor.execute(String.format("python3.7 gitGraber.py -k wordlists/keywords.txt -q %s ", message), EXEC_DIR);
+      StreamGobbler streamGobbler = osCommandExecutor.execute(String.format("python3.9 gitGraber.py -k wordlists/keywords.txt -q %s ", receivedBrand.getName()), EXEC_DIR);
 
       if (streamGobbler != null) {
         LogManager.getLogger(ScanApplication.class).info(String.format("Gitgrabber terminated with status : %d", streamGobbler.getExitStatus()));
@@ -100,14 +99,14 @@ public class ScanApplication {
               sbrFull.append(result).append(System.getProperty("line.separator"));
 
               //The contains test is to avoid false positive : https://github.com/certmichelin/Redscan-Gitgrabber/issues/2
-              if (result.startsWith("[!]") && result.contains("(keyword used:")) { 
+              if (result.startsWith("[!]") && result.contains("(keyword used:")) {
                 LogManager.getLogger(ScanApplication.class).info(String.format("Detect new vulnerability : %s", result));
-                
+
                 //Begin new vulnerability creation.
                 sbr.append(result).append(System.getProperty("line.separator"));
                 String title = result.replace("[!] ", "");
                 LogManager.getLogger(ScanApplication.class).info(String.format("Extract title : %s", title));
-                
+
                 String url = "";
                 String token = "";
                 StringBuilder vulnMessage = new StringBuilder();
@@ -129,7 +128,7 @@ public class ScanApplication {
                       url = result.replace("[+] RAW URL : ", "");
                       LogManager.getLogger(ScanApplication.class).info(String.format("URL found for vulnerability : %s", url));
                     }
-                    
+
                     if (result.startsWith("[+] Token : ")) {
                       token = result.replace("[+] Token : ", "");
                       LogManager.getLogger(ScanApplication.class).info(String.format("Token found for vulnerability : %s", token));
@@ -139,23 +138,25 @@ public class ScanApplication {
                   }
                 }
 
-                Vulnerability vulnerability = new Vulnerability(Vulnerability.generateId("redscan-gitgrabber", message, DigestUtils.md5Hex(url + token).toUpperCase()),
+                Vulnerability vulnerability = new Vulnerability(
                         Severity.HIGH,
+                        "Potential secret found",
                         title,
                         vulnMessage.toString(),
                         url,
+                        DigestUtils.md5Hex(url + token).toUpperCase(),
                         "redscan-gitgrabber");
-                rabbitTemplate.convertAndSend(RabbitMqConfig.FANOUT_VULNERABILITIES_EXCHANGE_NAME, "", vulnerability.toJson());
+                vulnerability.create();
+                rabbitTemplate.convertAndSend(vulnerability.getFanoutExchangeName(), "", vulnerability.toJson());
               } else {
                 ++iter;
               }
             }
 
-            LogManager.getLogger(ScanApplication.class).info(String.format("Gitgrabber output for %s : %s", message, sbrFull.toString()));
+            LogManager.getLogger(ScanApplication.class).info(String.format("Gitgrabber output for %s : %s", receivedBrand.getName(), sbrFull.toString()));
 
             //Update the datalake.
-            datalakeConfig.upsertBrandField(message, "gitgrabber", sbr.toString());
-
+            receivedBrand.upsertField("gitgrabber", sbr.toString());
           }
         }
       }

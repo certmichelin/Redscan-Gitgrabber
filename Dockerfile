@@ -6,7 +6,7 @@ FROM openjdk:8-jre
 #Install gitgrabber
 RUN apt update
 RUN apt install git -y
-RUN apt install python3.7 -y
+RUN apt install python3.9 -y
 RUN apt install python3-pip -y
 
 RUN git clone https://github.com/hisxo/gitGraber /usr/bin/gitgrabber
