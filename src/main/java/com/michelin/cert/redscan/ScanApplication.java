@@ -140,13 +140,12 @@ public class ScanApplication {
 
                 Vulnerability vulnerability = new Vulnerability(
                         Severity.HIGH,
-                        "Potential secret found",
+                        "GH_POTENTIAL_LEAK",
                         title,
                         vulnMessage.toString(),
                         url,
                         DigestUtils.md5Hex(url + token).toUpperCase(),
                         "redscan-gitgrabber");
-                vulnerability.create();
                 rabbitTemplate.convertAndSend(vulnerability.getFanoutExchangeName(), "", vulnerability.toJson());
               } else {
                 ++iter;
