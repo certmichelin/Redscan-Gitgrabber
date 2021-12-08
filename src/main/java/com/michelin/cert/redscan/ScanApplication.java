@@ -18,6 +18,7 @@ package com.michelin.cert.redscan;
 
 import com.michelin.cert.redscan.utils.datalake.DatalakeStorageException;
 import com.michelin.cert.redscan.utils.models.Brand;
+import com.michelin.cert.redscan.utils.models.reports.CommonTags;
 import com.michelin.cert.redscan.utils.models.reports.Severity;
 import com.michelin.cert.redscan.utils.models.reports.Vulnerability;
 import com.michelin.cert.redscan.utils.system.OsCommandExecutor;
@@ -25,7 +26,6 @@ import com.michelin.cert.redscan.utils.system.StreamGobbler;
 
 import java.io.File;
 
-import org.apache.commons.codec.digest.DigestUtils;
 import org.apache.logging.log4j.LogManager;
 
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -139,13 +139,15 @@ public class ScanApplication {
                 }
 
                 Vulnerability vulnerability = new Vulnerability(
+                        Vulnerability.generateId("redscan-gitgrabber", url, token),
                         Severity.HIGH,
-                        "GH_POTENTIAL_LEAK",
                         title,
                         vulnMessage.toString(),
                         url,
-                        DigestUtils.md5Hex(url + token).toUpperCase(),
-                        "redscan-gitgrabber");
+                        "redscan-gitgrabber",
+                        new String[]{CommonTags.EXPOSURE, CommonTags.CREDENTIALS}
+                );
+
                 rabbitTemplate.convertAndSend(vulnerability.getFanoutExchangeName(), "", vulnerability.toJson());
               } else {
                 ++iter;

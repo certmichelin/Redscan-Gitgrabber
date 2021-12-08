@@ -14,7 +14,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     
         <!-- Define dependencies versions -->
-        <redscan-utils.version>4.0.2</redscan-utils.version>
+        <redscan-utils.version>4.2.0</redscan-utils.version>
         <!-- Define test dependencies versions -->
         
         <!-- Define plugins versions -->
@@ -82,10 +82,6 @@
             <artifactId>jackson-core</artifactId>
         </dependency>
         
-        <dependency>
-            <groupId>commons-codec</groupId>
-            <artifactId>commons-codec</artifactId>
-        </dependency>
         <!-- End of dependencies for logging -->
         
         <!-- Custom dependencies -->
